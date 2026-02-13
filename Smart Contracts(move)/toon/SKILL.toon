@@ -1,0 +1,443 @@
+nautilus_project
+  version 1.0.0
+  description AWS Nitro Enclave auction validator with Sui blockchain verification
+
+environments
+  dev
+    sui_network testnet
+    kafka_broker localhost:9092
+    enclave
+      cpu_count 2
+      memory_mb 8192
+      debug_mode true
+    topics
+      input nautilus-queue-dev-v1
+      output validated-auction-data-dev-v1
+      offset nautilus-offsets-dev-v1
+    consumer_group nautilus-consumer-group-dev-v1
+    run_mode Debug
+  qa
+    sui_network testnet
+    kafka_broker 188.42.133.76:9092
+    enclave
+      cpu_count 4
+      memory_mb 12288
+      debug_mode true
+    topics
+      input nautilus-queue-qa-v1
+      output validated-auction-data-qa-v1
+      offset nautilus-offsets-v1
+    consumer_group nautilus-consumer-group-v1
+    run_mode Debug
+  staging
+    sui_network testnet
+    kafka_broker staging-broker.example.com:9092
+    enclave
+      cpu_count 4
+      memory_mb 12288
+      debug_mode false
+    topics
+      input nautilus-queue-stg-v1
+      output validated-auction-data-stg-v1
+      offset nautilus-offsets-stg-v1
+    consumer_group nautilus-consumer-group-stg-v1
+    run_mode Release
+  prod
+    sui_network mainnet
+    kafka_broker prod-broker.example.com:9092
+    enclave
+      cpu_count 4
+      memory_mb 12288
+      debug_mode false
+    topics
+      input nautilus-queue-prod-v1
+      output validated-auction-data-prod-v1
+      offset nautilus-offsets-prod-v1
+    consumer_group nautilus-consumer-group-prod-v1
+    run_mode Release
+    max_batch_size 1000
+    max_wait_ms 5000
+
+move_objects
+  EnclaveConfig
+    type generic_T
+    fields
+      id UID
+      current_enclave_id Option<ID>
+      pcr0 vector<u8>
+      pcr1 vector<u8>
+      pcr2 vector<u8>
+      version u64
+    description Singleton config storing PCR values and current enclave
+  Enclave
+    type generic_T
+    fields
+      id UID
+      public_key vector<u8>
+      created_at u64
+    description Individual enclave instance with Ed25519 public key
+  Cap
+    type generic_T
+    fields
+      id UID
+    description Admin capability for updates
+
+gas_costs
+  register_enclave
+    mist 5000000
+    sui 0.005
+    description Register new enclave with attestation
+  update_pcrs
+    mist 3000000
+    sui 0.003
+    description Update PCR values on-chain
+  destroy_old_enclave
+    mist 2000000
+    sui 0.002
+    description Clean up old enclave object
+  verify_signature
+    mist 1500000
+    sui 0.0015
+    status DISABLED
+    reason At 18000 msg/sec = 2330 SUI/day = 8.6M to 43M USD/day
+
+gas_budgets
+  development
+    mist 10000000
+    sui 0.01
+    use_for Local testing and iteration
+  deployment
+    mist 100000000
+    sui 0.1
+    use_for Publishing new packages
+  mainnet
+    mist 200000000
+    sui 0.2
+    use_for Production deployments with safety margin
+
+throughput_at_scale
+  messages_per_second 18000
+  partitions 3
+  per_partition_rate 6000
+  verifications_per_second 18000
+  verifications_per_day 1555200000
+  mist_per_day 2332800000000000
+  sui_per_day 2332800
+  usd_per_day_low 8640000
+  usd_per_day_high 43200000
+
+optimization_strategies
+  batch_verification
+    batch_size 10000
+    cost_per_message 150
+    savings_percent 99.99
+  merkle_commitment
+    cost_per_batch 1000000
+    messages_per_batch 10000
+    cost_per_message 100
+  periodic_checkpoint
+    frequency_seconds 3600
+    cost_per_checkpoint 1500000
+    savings_percent 99.999998
+
+health_endpoints
+  root
+    path /
+    method GET
+    expected_response Nautilus is running!
+    timeout_ms 100
+  health_check
+    path /health_check
+    method GET
+    returns
+      public_key string
+      endpoints
+        sui_testnet string
+        kafka_broker string
+        offset_topic string
+    expected_values
+      sui_testnet reachable
+      kafka_broker reachable
+      offset_topic reachable
+    timeout_ms 5000
+  attestation
+    path /get_attestation
+    method GET
+    returns hex_encoded_document
+    min_length_chars 4000
+    timeout_ms 10000
+
+monitoring_thresholds
+  throughput
+    target_per_partition 6000
+    minimum_acceptable 5000
+    unit messages_per_second
+    alert_below 5000
+  consumer_lag
+    target 50
+    warning 100
+    critical 1000
+    unit messages
+  enclave_resources
+    cpu_percent
+      target 60
+      warning 80
+      critical 90
+    memory_percent
+      target 70
+      warning 85
+      critical 95
+    memory_mb 12288
+  error_rate
+    target_percent 0.0
+    warning_percent 0.1
+    critical_percent 1.0
+  log_age
+    normal_seconds 60
+    warning_seconds 300
+    critical_seconds 600
+
+kafka_configuration
+  qa_broker 188.42.133.76:9092
+  topics
+    input nautilus-queue-qa-v1
+    output validated-auction-data-qa-v1
+    offset nautilus-offsets-v1
+  consumer_group nautilus-consumer-group-v1
+  partitions 3
+  expected_throughput_total 18000
+  offset_persistence true
+  compression gzip
+
+enclave_specifications
+  cpu_count 4
+  memory_mb 12288
+  enclave_cid 88
+  expected_state RUNNING
+  initialization_timeout_seconds 60
+  parent_instance_type t3.xlarge
+
+vsock_ports
+  secrets 7777
+  kafka 9092
+  http 3000
+  heartbeat 9000
+  heartbeat_interval_seconds 5
+
+log_patterns
+  success
+    - Kafka consumer started successfully
+    - ThroughputTracker Processed
+    - Health check passed
+  warning
+    - WARN
+    - timeout
+    - retry
+    - lag
+  error
+    - ERROR
+    - failed
+    - connection refused
+    - parse error
+  critical
+    - panic
+    - crash
+    - fatal
+    - out of memory
+
+move_errors
+  EPCRMismatch
+    code 1
+    hex 0x1
+    message PCR values do not match EnclaveConfig
+    cause On-chain PCRs different from attestation
+    fix_command sui client call --function update_pcrs --args CONFIG CAP PCR0 PCR1 PCR2
+    fix_steps
+      - Verify PCRs in attestation document
+      - Check on-chain PCRs in EnclaveConfig
+      - Run update_pcrs if needed
+  ENotAuthorized
+    code 2
+    hex 0x2
+    message Caller does not own Cap object
+    cause Missing or wrong admin capability
+    fix_commands
+      - sui client active-address
+      - sui client objects --filter StructType | grep Cap
+    fix_steps
+      - Ensure using correct address
+      - Verify Cap object ownership
+  EInvalidPublicKey
+    code 3
+    hex 0x3
+    message Public key format invalid
+    cause Key not 32 bytes or malformed
+    fix_steps
+      - Verify attestation parsing
+      - Check key extraction logic
+  EEnclaveNotFound
+    code 4
+    hex 0x4
+    message Enclave object does not exist
+    cause Invalid enclave ID or already destroyed
+    fix_command sui client objects --filter StructType --json | jq select type contains Enclave
+
+deployment_errors
+  InsufficientGas
+    message Gas budget too low
+    fix Increase gas budget to 50000000 or higher
+    command_flag --gas-budget 50000000
+  PackageNotFound
+    message Invalid package ID
+    fix Verify ENCLAVE_PACKAGE_ID in deployment_config.sh
+  ObjectNotFound
+    message Object ID invalid or deleted
+    fix_command sui client object OBJECT_ID
+    fix_steps
+      - Verify object exists
+      - Check if object was destroyed in previous transaction
+  InvalidUpgrade
+    message Upgrade capability mismatch
+    fix Ensure using correct CAP_ID for upgrade
+  NetworkError
+    message Cannot connect to Sui network
+    fix_command sui client switch --env testnet
+    fix_steps
+      - Check network configuration
+      - Verify RPC endpoint in Sui config
+      - Try switching networks
+
+enclave_errors
+  PCRMismatchOnRegistration
+    symptom Registration fails with PCR error
+    diagnosis PCRs in attestation do not match on-chain EnclaveConfig
+    solution Update on-chain PCRs before registering new enclave
+    commands
+      - curl http://localhost:3000/get_attestation
+      - sui client object ENCLAVE_CONFIG_ID --json | jq .data.content.fields
+      - sui client call --function update_pcrs
+  EnclaveWontStart
+    symptom nitro-cli run-enclave fails or times out
+    diagnosis_options
+      - Insufficient resources
+      - Bad EIF file
+      - Kernel module not loaded
+    check_commands
+      - free -h
+      - lscpu
+      - lsmod | grep nitro
+      - file out/nitro.eif
+    solutions
+      - Reduce cpu_count to 2 and memory to 8192
+      - Rebuild EIF with docker build
+      - Load kernel module with modprobe nitro_enclaves
+  AttestationFetchFails
+    symptom curl http://localhost:3000/get_attestation returns 500
+    diagnosis_options
+      - NSM driver issue
+      - Enclave not fully initialized
+    solutions
+      - Wait 30-60 seconds for initialization
+      - Check sudo nitro-cli console
+      - Verify ls -l /dev/nsm shows device
+  KafkaConnectionFails
+    symptom Health check shows kafka_broker unreachable
+    diagnosis_options
+      - VSOCK forwarding not running
+      - Kafka broker down or unreachable
+    check_commands
+      - ps aux | grep socat
+      - nc -zv 188.42.133.76 9092
+      - sudo iptables -L -n -v | grep 9092
+    solutions
+      - sudo pkill socat then run configure_enclave.sh
+      - Check Kafka broker status
+      - Verify network connectivity
+  OldEnclaveWontDestroy
+    symptom destroy_old_enclave fails with object not found
+    diagnosis Enclave already destroyed or wrong ID
+    solution Query valid enclave objects and destroy manually
+    command sui client call --function destroy_old_enclave --args CONFIG CAP OLD_ID
+
+deployment_modes
+  update
+    description Full deployment with PCR update
+    steps
+      - Build EIF
+      - Update PCRs on-chain
+      - Register new enclave
+      - Destroy old enclave
+  no_update
+    description Register without PCR update
+    steps
+      - Skip EIF build
+      - Skip PCR update
+      - Register with existing PCRs
+      - Keep old enclave
+  destroy_only
+    description Cleanup only
+    steps
+      - Skip build and register
+      - Destroy old enclaves only
+
+file_structure
+  Containerfile StageX multi-stage EIF build
+  deploy_nautilus.sh Main deployment orchestrator
+  register_enclave_enhanced.sh Enclave registration logic
+  configure_enclave.sh VSOCK and network setup
+  deployment_config.sh Package IDs and environment config
+  secrets.json Runtime configuration for enclave
+  out
+    nitro.eif Compiled enclave image
+    nitro.pcrs PCR measurements in JSON
+  move
+    enclave
+      sources
+        enclave.move Main smart contract
+      tests
+        enclave_tests.move Unit tests
+      Move.toml Package manifest
+      Published.toml Deployment tracking
+
+key_commands
+  build_eif docker build --target export -f Containerfile -o out/ .
+  deploy ./deploy_nautilus.sh update
+  health_check curl http://localhost:3000/health_check | jq
+  enclave_status sudo nitro-cli describe-enclaves
+  consumer_lag kafka-consumer-groups --bootstrap-server 188.42.133.76:9092 --group nautilus-consumer-group-v1 --describe
+  query_config sui client object ENCLAVE_CONFIG_ID --json
+  update_pcrs sui client call --function update_pcrs --args CONFIG CAP PCR0 PCR1 PCR2
+  register sui client call --function register_enclave --args CONFIG KEY PCR0 PCR1 PCR2 0x6
+  destroy sui client call --function destroy_old_enclave --args CONFIG CAP OLD_ID
+  view_logs sudo tail -f /var/log/nitro_enclaves/nitro_enclave.log
+
+production_metrics
+  total_messages_processed 230000
+  partitions 3
+  throughput_per_partition 6000
+  total_throughput 18000
+  consumer_lag_target 50
+  consumer_lag_max_acceptable 100
+  zero_message_loss true
+  offset_persistence enabled
+
+best_practices
+  always_version_eifs true
+  test_lower_envs_first true
+  deployment_order dev qa staging prod
+  use_canary_deployments true
+  canary_monitor_minutes 30
+  log_all_deployments true
+  verify_offset_persistence true
+  backup_before_build true
+  wait_before_cleanup_hours 2
+  git_tag_releases true
+
+integration_points
+  aws_nitro_enclaves Isolated TEE with attestation
+  sui_blockchain PCR storage and enclave registration
+  kafka Message queue for auction data
+  vsock Parent-enclave communication
+  socat Network forwarding
+  ed25519 Signature algorithm
+  bcs Binary canonical serialization
